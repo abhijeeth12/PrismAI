@@ -25,7 +25,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("wisdom_app_fixed")
+logger = logging.getLogger("main")
 load_dotenv()
 
 # ---------- Ollama Setup ----------
@@ -309,4 +309,4 @@ async def root():
 # ---------- If run as script ----------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("wisdom_app_fixed:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

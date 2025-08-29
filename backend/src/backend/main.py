@@ -10,6 +10,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+p = FastAPI()
+p.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # good for dev; in prod, specify e.g. ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Add path for imports (keeps your original behavior)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
