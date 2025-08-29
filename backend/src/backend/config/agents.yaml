@@ -1,0 +1,10 @@
+agents:
+  - name: socrates
+    module: tools.all_agents
+    class: SocratesAgent
+  - name: marcus
+    module: tools.all_agents
+    class: MarcusAureliusAgent
+  - name: laotzu
+    module: tools.all_agents
+    class: LaoTzuAgent

@@ -1,0 +1,10 @@
+tasks:
+  ask_wisdom:
+    description: "Collect wisdom from philosopher agents"
+    steps:
+      - agent: socrates
+        method: generate_response
+      - agent: marcus
+        method: generate_response
+      - agent: laotzu
+        method: generate_response

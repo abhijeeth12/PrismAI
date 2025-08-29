@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"/><title>Council of Wisdom</title></head>
+  <body>
+    <h1>Council of Wisdom</h1>
+    <textarea id="q" rows="3" cols="50" placeholder="Your question…"></textarea><br/>
+    <button onclick="ask()">Ask</button>
+    <pre id="out"></pre>
+    <script>
+      async function ask() {
+        const text = document.getElementById("q").value;
+        const res = await fetch("http://localhost:8000/ask", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ text })
+        });
+        const json = await res.json();
+        document.getElementById("out").textContent = json.synthesis;
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+uv
+crewai
+fastapi
+uvicorn
+crewai
+openai
+ollama
