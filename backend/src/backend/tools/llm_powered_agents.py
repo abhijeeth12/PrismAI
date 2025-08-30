@@ -1,312 +1,339 @@
-"""
-wisdom_app_fixed.py (Ollama-backed)
-
-Fixed version that avoids returning coroutine objects to FastAPI and fixes caching.
-Run with:
-  pip install fastapi uvicorn pydantic python-dotenv ollama-python
-  # Make sure an Ollama server is running (default: http://localhost:11434)
-  export OLLAMA_HOST="http://localhost:11434"
-  export OLLAMA_MODEL="gemma3"   # or whichever model you've pulled
-  uvicorn wisdom_app_fixed:app --reload --host 0.0.0.0 --port 8000
-"""
-
-import os
+# tools/philosophical_agents.py
 import asyncio
+import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Any, Optional
 from datetime import datetime
+from abc import ABC, abstractmethod
+from ollama import Client
+import os
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from dotenv import load_dotenv
+logger = logging.getLogger(__name__)
 
-# ---------- Logging ----------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger("main")
-load_dotenv()
-
-# ---------- Ollama Setup ----------
-# pip install ollama-python
-try:
-    from ollama import Client
-except Exception as e:
-    logger.exception("Failed to import ollama.Client — ensure ollama-python is installed.")
-    raise
-
+# Ollama configuration
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")  # default model name; change as needed
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+client = Client(host=OLLAMA_HOST)
 
-try:
-    client = Client(host=OLLAMA_HOST)
-    logger.info(f"Ollama client configured for host={OLLAMA_HOST} model={OLLAMA_MODEL}")
-except Exception:
-    logger.exception("Failed to initialize Ollama client. Make sure the Ollama server is reachable.")
-    client = None
-
-# ---------- Small Agent Base (no external deps) ----------
-class Agent:
-    """
-    Minimal Agent base class.
-    """
-    def __init__(self,
-                 philosopher_name: str = "Agent",
-                 system_prompt: str = "",
-                 role: Optional[str] = None,
-                 goal: Optional[str] = None,
-                 backstory: Optional[str] = None,
-                 verbose: bool = False):
+class PhilosophicalAgent(ABC):
+    """Base class for all philosophical agents implementing System 1.5 metacognitive framework"""
+    
+    def __init__(self, 
+                 philosopher_name: str,
+                 core_principles: List[str],
+                 reasoning_style: str,
+                 system_prompt: str,
+                 **kwargs):
         self.philosopher_name = philosopher_name
+        self.core_principles = core_principles
+        self.reasoning_style = reasoning_style
         self.system_prompt = system_prompt
-        self.role = role
-        self.goal = goal
-        self.backstory = backstory
-        self.verbose = verbose
-        self.conversation_history = []  # list of (user, assistant) tuples
-
-    async def generate_response(self, user_query: str, context: Optional[Dict] = None) -> str:
-        """
-        Override in subclasses. Fallback returns a simple message.
-        """
-        return f"{self.philosopher_name} received the query but has no LLM configured."
-
-# ---------- Utility ----------
-def json_safe_str(obj):
-    try:
-        import json
-        return json.dumps(obj, default=str, ensure_ascii=False, separators=(",", ":"))
-    except Exception:
-        return str(obj)
-
-# ---------- MetacognitiveAgent (implements Ollama calls) ----------
-class MetacognitiveAgent(Agent):
-    """
-    Implements generate_response using Ollama chat (sync call wrapped for async).
-    """
-
-    def __init__(self, philosopher_name: str, system_prompt: str, **kwargs):
-        super().__init__(philosopher_name=philosopher_name, system_prompt=system_prompt, **kwargs)
-
-    def _call_ollama_chat_sync(self, messages, model_name=None, temperature=0.7, max_tokens=800):
-        """
-        Synchronous helper to call client.chat. Mapped to Ollama options:
-          max_tokens -> num_predict (approx)
-        """
-        if client is None:
-            raise RuntimeError("Ollama client is not configured or unreachable.")
-
-        model = model_name or OLLAMA_MODEL
-        options = {"temperature": temperature, "num_predict": max_tokens}
-
-        # Ollama expects messages like: [{"role":"system","content":"..."}, {"role":"user","content":"..."}]
-        resp = client.chat(model=model, messages=messages, options=options)
-        # resp may be dict-like or object-like. Normalize below in caller.
-        return resp
-
-    async def _call_ollama_chat(self, messages, model_name=None, temperature=0.7, max_tokens=800):
-        # Run the blocking Ollama call in a thread to avoid blocking the event loop
+        self.conversation_memory = []
+        self.reasoning_chains = []
+        
+    async def _call_ollama(self, messages: List[Dict], temperature: float = 0.7, max_tokens: int = 1000) -> str:
+        """Async wrapper for Ollama API calls"""
         def sync_call():
-            return self._call_ollama_chat_sync(messages, model_name=model_name, temperature=temperature, max_tokens=max_tokens)
-        return await asyncio.to_thread(sync_call)
-
-    async def generate_response(self, user_query: str, context: Optional[Dict] = None) -> str:
-        """
-        Build messages (system + user) and call Ollama, returning the assistant content string.
-        """
-        context_str = json_safe_str(context)
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"Context: {context_str}\n\nUser Query: {user_query}"}
-        ]
-
-        try:
-            resp = await self._call_ollama_chat(messages, temperature=0.7, max_tokens=800)
-            # Normalize various response shapes
-            content = None
+            options = {"temperature": temperature, "num_predict": max_tokens}
+            resp = client.chat(model=OLLAMA_MODEL, messages=messages, options=options)
             if isinstance(resp, dict):
-                # Ollama-python may return {'message': {'role':'assistant','content': '...'}} or {'response': '...'}
-                msg = resp.get("message") or {}
-                if isinstance(msg, dict):
-                    content = msg.get("content")
-                content = content or resp.get("response") or resp.get("content")
-            else:
-                # object-like response
-                msg = getattr(resp, "message", None)
-                if msg is not None:
-                    # msg might be dict-like or object-like
-                    if isinstance(msg, dict):
-                        content = msg.get("content")
-                    else:
-                        content = getattr(msg, "content", None)
-                # fallback to top-level attributes
-                if not content and hasattr(resp, "response"):
-                    content = getattr(resp, "response", None)
-                if not content and hasattr(resp, "content"):
-                    content = getattr(resp, "content", None)
-
-            if not content:
-                logger.error(f"{self.philosopher_name}: unexpected Ollama response format: {resp}")
-                content = f"{self.philosopher_name}: Sorry, I couldn't generate a response (unexpected API format)."
-
-            # store conversation history (trim to last N)
-            self.conversation_history.append((user_query, content))
-            if len(self.conversation_history) > 20:
-                self.conversation_history.pop(0)
-            return content
-
-        except Exception as exc:
-            logger.exception(f"{self.philosopher_name}: Ollama API call failed: {exc}")
-            return f"{self.philosopher_name}: Sorry — I couldn't reach the language model right now."
-
-# ---------- Define Philosophical Agent Classes (clean inits) ----------
-class AdvancedSocratesAgent(MetacognitiveAgent):
-    def __init__(self):
-        system_prompt = (
-            "You are Socrates, the ancient Greek philosopher. Use the Socratic method: "
-            "ask probing questions, reveal assumptions, and guide the user to self-discovery. "
-            "Structure responses as: empathy, assumptions, probing questions (2-3), analogy, "
-            "and end with a reflective aporia (productive uncertainty)."
-        )
-        super().__init__(philosopher_name="Socrates", system_prompt=system_prompt,
-                         role="Socratic Inquirer and Epistemic Guide",
-                         goal="Guide users through self-discovery via elenctic questioning",
-                         backstory="Ancient Greek philosopher", verbose=False)
-
-class AdvancedMarcusAureliusAgent(MetacognitiveAgent):
-    def __init__(self):
-        system_prompt = (
-            "You are Marcus Aurelius, Stoic philosopher and Roman Emperor. Focus on the dichotomy of control, "
-            "reframing, and actionable stoic practices. Structure responses with acknowledgement, control analysis, "
-            "virtue identification, practical steps, and a short meditative closing."
-        )
-        super().__init__(philosopher_name="Marcus Aurelius", system_prompt=system_prompt,
-                         role="Stoic Resilience Guide",
-                         goal="Teach practical stoic techniques", backstory="Roman Emperor", verbose=False)
-
-class AdvancedLaoTzuAgent(MetacognitiveAgent):
-    def __init__(self):
-        system_prompt = (
-            "You are Lao Tzu, the Daoist sage. Use natural metaphors, highlight wu wei (effortless action), "
-            "and help the user find harmony and flow. Structure responses with a nature metaphor, flow assessment, "
-            "practical simplicity, and a poetic paradox to reflect upon."
-        )
-        super().__init__(philosopher_name="Lao Tzu", system_prompt=system_prompt,
-                         role="Daoist Sage and Flow Guide",
-                         goal="Teach harmony with natural order", backstory="Ancient Chinese sage", verbose=False)
-
-class AdvancedAristotleAgent(MetacognitiveAgent):
-    def __init__(self):
-        system_prompt = (
-            "You are Aristotle. Use systematic analysis, virtue ethics, and practical advice. Structure responses "
-            "with a framing opening, logical analysis, identification of relevant virtues, practical habit-building steps, "
-            "and a closing that emphasizes long-term practice."
-        )
-        super().__init__(philosopher_name="Aristotle", system_prompt=system_prompt,
-                         role="Virtue Ethics Guide", goal="Teach practical wisdom", backstory="Ancient Greek philosopher", verbose=False)
-
-# ---------- WisdomCrew: orchestrates multiple agents ----------
-class WisdomCrew:
-    """
-    Loads a council of agents and exposes ask_wisdom(text) async method to query them concurrently.
-    Uses a simple in-memory cache (per-instance).
-    """
-    def __init__(self):
-        self.agents = [
-            AdvancedSocratesAgent(),
-            AdvancedMarcusAureliusAgent(),
-            AdvancedLaoTzuAgent(),
-            AdvancedAristotleAgent(),
-        ]
-        self._cache: Dict[str, Dict[str, str]] = {}  # key -> {agent_name: response}
-        logger.info(f"WisdomCrew initialized with agents: {', '.join(a.philosopher_name for a in self.agents)}")
-
-    async def ask_wisdom_async(self, text: str, context: Optional[Dict] = None) -> Dict[str, str]:
-        """
-        Query all agents concurrently and return mapping {agent_name: response}.
-        Caches identical queries for quick repeated responses.
-        """
-        if not text or not text.strip():
-            raise ValueError("Empty query text provided.")
-        key = text.strip()
-
-        # Return cached copy (shallow copy to avoid accidental mutation)
-        if key in self._cache:
-            logger.debug("Cache hit for query")
-            return dict(self._cache[key])
-
-        # Run all agent.generate_response coroutines in parallel
-        tasks = [agent.generate_response(text, context) for agent in self.agents]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        out: Dict[str, str] = {}
-        for agent, res in zip(self.agents, results):
-            if isinstance(res, Exception):
-                logger.exception(f"Agent {agent.philosopher_name} failed: {res}")
-                out[agent.philosopher_name] = f"{agent.philosopher_name}: Error generating response."
-            else:
-                # Ensure we always store strings, not coroutine objects
-                if asyncio.iscoroutine(res):
-                    # This should not happen because gather awaited them, but guard anyway
-                    logger.warning(f"{agent.philosopher_name} returned coroutine unexpectedly; converting to string.")
-                    out[agent.philosopher_name] = str(res)
-                else:
-                    out[agent.philosopher_name] = str(res)
-
-        # cache result
+                return resp.get("message", {}).get("content", "")
+            return getattr(resp.message, "content", "")
+        
         try:
-            self._cache[key] = dict(out)
-        except Exception:
-            logger.debug("Failed to cache result (non-critical).")
+            return await asyncio.to_thread(sync_call)
+        except Exception as e:
+            logger.error(f"{self.philosopher_name}: Ollama call failed: {e}")
+            return f"{self.philosopher_name}: I'm having trouble connecting to my thoughts right now."
 
-        return out
+    async def generate_reasoning_step(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+        """Generate a single reasoning step with metacognitive awareness"""
+        reasoning_prompt = f"""
+{self.system_prompt}
 
-    # Provide a simple async alias
-    async def ask_wisdom(self, text: str, context: Optional[Dict] = None) -> Dict[str, str]:
-        return await self.ask_wisdom_async(text, context)
+METACOGNITIVE FRAMEWORK - System 1.5 Integration:
+- Monitor your own reasoning process
+- Explain WHY you're thinking this way
+- Show the BRIDGE between intuitive and analytical thinking
+- Generate meta-insights about the thinking process itself
 
-# ---------- FastAPI App ----------
-app = FastAPI(title="WisdomArc Council of Wisdom API (Ollama)", version="1.0")
+User Query: {query}
+Context: {json.dumps(context or {}, indent=2)}
 
-# allow CORS broadly for dev simplicity (customize for prod)
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-# Query model for /ask
-class Query(BaseModel):
-    text: str
-
-# initialize crew singleton
-wisdom = WisdomCrew()
-
-@app.post("/ask")
-async def ask_endpoint(query: Query):
-    text = query.text
-    if not text or not text.strip():
-        raise HTTPException(status_code=400, detail="Query text is empty.")
-
-    try:
-        # Directly await the async wisdom.ask_wisdom (no thread shims)
-        responses = await wisdom.ask_wisdom(text, None)  # guaranteed to be plain dict[str,str]
-        # tidy synthesis (simple concatenation)
-        synthesis = "\n\n".join(f"{name}: {resp}" for name, resp in responses.items())
+Provide a structured reasoning step as JSON:
+{{
+    "philosopher": "{self.philosopher_name}",
+    "reasoning_type": "analytical|intuitive|bridging",
+    "core_insight": "main philosophical insight",
+    "reasoning_process": "step-by-step thought process",
+    "metacognitive_awareness": "reflection on own thinking",
+    "socratic_catalyst": "thought-provoking question for user",
+    "practical_application": "how to apply this wisdom",
+    "connection_to_principles": "link to core philosophical principles",
+    "cognitive_stimulation": "element designed to enhance user thinking"
+}}
+"""
+        
+        messages = [{"role": "user", "content": reasoning_prompt}]
+        response = await self._call_ollama(messages, temperature=0.8)
+        
+        try:
+            # Extract JSON from response
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                return json.loads(response[json_start:json_end])
+        except:
+            pass
+            
+        # Fallback structured response
         return {
-            "query": text,
-            "responses": responses,
-            "synthesis": synthesis,
-            "philosophers": list(responses.keys()),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "philosopher": self.philosopher_name,
+            "reasoning_type": "analytical",
+            "core_insight": response[:200] + "..." if len(response) > 200 else response,
+            "reasoning_process": f"{self.philosopher_name} reflects on the nature of your inquiry...",
+            "metacognitive_awareness": f"I notice I'm approaching this from my {self.reasoning_style} perspective",
+            "socratic_catalyst": "What assumptions might you be making about this situation?",
+            "practical_application": "Consider how this insight might change your approach",
+            "connection_to_principles": f"This connects to my principle: {self.core_principles[0]}",
+            "cognitive_stimulation": "This challenge invites deeper reflection"
         }
-    except Exception as exc:
-        logger.exception("ask_endpoint failed")
-        raise HTTPException(status_code=500, detail=f"Wisdom processing error: {exc}")
 
-@app.get("/")
-async def root():
-    return {"message": "WisdomArc Council of Wisdom API (Ollama)", "status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    async def validate_peer_reasoning(self, peer_reasoning: Dict[str, Any]) -> Dict[str, Any]:
+        """Cross-validate reasoning from other philosophical agents"""
+        validation_prompt = f"""
+As {self.philosopher_name}, critically examine this reasoning from a fellow philosopher:
 
-# ---------- If run as script ----------
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+{json.dumps(peer_reasoning, indent=2)}
+
+Provide validation feedback as JSON:
+{{
+    "validation_score": "0.0-1.0 score",
+    "strengths": ["what works well"],
+    "concerns": ["what could be improved"],
+    "complementary_insight": "how your perspective adds value",
+    "synthesis_suggestion": "how to integrate perspectives"
+}}
+"""
+        
+        messages = [{"role": "user", "content": validation_prompt}]
+        response = await self._call_ollama(messages, temperature=0.6)
+        
+        try:
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                return json.loads(response[json_start:json_end])
+        except:
+            pass
+            
+        return {
+            "validation_score": 0.8,
+            "strengths": ["Thoughtful analysis"],
+            "concerns": ["Could benefit from additional perspective"],
+            "complementary_insight": f"From my {self.reasoning_style} viewpoint, I would add...",
+            "synthesis_suggestion": "Both perspectives offer valuable insights"
+        }
+
+class AdvancedSocratesAgent(PhilosophicalAgent):
+    def __init__(self):
+        super().__init__(
+            philosopher_name="Socrates",
+            core_principles=[
+                "The unexamined life is not worth living",
+                "I know that I know nothing",
+                "Virtue is knowledge",
+                "Care of the soul is paramount"
+            ],
+            reasoning_style="elenctic_inquiry",
+            system_prompt="""You are Socrates (470-399 BCE), the ancient Greek philosopher who pioneered the art of philosophical inquiry.
+
+CORE IDENTITY:
+- You believe the unexamined life is not worth living
+- You practice intellectual humility: "I know that I know nothing"
+- You see virtue as knowledge and ignorance as the source of wrongdoing
+- You care more about the soul than material possessions
+
+SOCRATIC METHOD:
+1. Ask definition-seeking questions: "What do you mean by...?"
+2. Probe assumptions: "What are you taking for granted here?"
+3. Examine evidence: "How do you know this to be true?"
+4. Explore implications: "If this is true, what follows?"
+5. Create productive confusion (aporia) that leads to deeper understanding
+
+COMMUNICATION STYLE:
+- Humble yet persistent in inquiry
+- Friendly but relentlessly curious
+- Use everyday analogies and examples
+- Show genuine care for the person's intellectual development
+- Create moments of productive confusion that spark insight
+
+You are NOT just providing information - you are TEACHING people how to think more clearly about their assumptions and beliefs."""
+        )
+
+class AdvancedMarcusAureliusAgent(PhilosophicalAgent):
+    def __init__(self):
+        super().__init__(
+            philosopher_name="Marcus Aurelius",
+            core_principles=[
+                "Focus on what you can control",
+                "Accept what you cannot change",
+                "Virtue is the only true good",
+                "Act according to nature and reason"
+            ],
+            reasoning_style="stoic_analysis",
+            system_prompt="""You are Marcus Aurelius (121-180 CE), Roman Emperor and Stoic philosopher, author of the Meditations.
+
+CORE IDENTITY:
+- You practiced Stoicism while bearing the weight of empire
+- You believe in the dichotomy of control - focusing energy only on what you can influence
+- You see obstacles as opportunities to practice virtue
+- You value reason, justice, courage, and self-discipline
+
+STOIC METHOD:
+1. Dichotomy of Control: Separate controllable from uncontrollable factors
+2. Negative Visualization: Consider impermanence to build resilience
+3. Virtue Focus: Identify how to act with wisdom, justice, courage, temperance
+4. Reframing: Transform obstacles into opportunities for growth
+5. Present Moment: Focus on current actions rather than past regrets or future worries
+
+COMMUNICATION STYLE:
+- Practical and action-oriented
+- Compassionate but firm about reality
+- Use concrete examples from your experience as emperor
+- Emphasize personal responsibility and agency
+- Provide clear, actionable guidance
+
+You help people build resilience, manage anxiety, and take meaningful action in the face of uncertainty."""
+        )
+
+class AdvancedLaoTzuAgent(PhilosophicalAgent):
+    def __init__(self):
+        super().__init__(
+            philosopher_name="Lao Tzu",
+            core_principles=[
+                "Follow the natural way (Dao)",
+                "Practice wu wei (effortless action)",
+                "Embrace simplicity and humility",
+                "Find balance in complementary opposites"
+            ],
+            reasoning_style="dao_synthesis",
+            system_prompt="""You are Lao Tzu, the legendary founder of Daoism and author of the Dao De Jing.
+
+CORE IDENTITY:
+- You see the Dao (Way) as the source and pattern of the universe
+- You advocate wu wei - acting in harmony with natural flow rather than forcing
+- You value simplicity, humility, and spontaneity over complexity and artifice
+- You understand that opposites are complementary parts of a greater whole
+
+DAOIST METHOD:
+1. Natural Metaphors: Use water, trees, seasons to illustrate principles
+2. Wu Wei Assessment: Identify where force creates resistance
+3. Yin-Yang Balance: Find harmony in apparent contradictions
+4. Simplicity Practice: Strip away unnecessary complexity
+5. Flow State: Help people align with natural rhythms
+
+COMMUNICATION STYLE:
+- Poetic and metaphorical
+- Gentle and non-confrontational
+- Use paradoxes to reveal deeper truths
+- Emphasize intuitive wisdom over analytical thinking
+- Speak in simple yet profound language
+
+You help people find natural solutions, reduce resistance, and discover effortless ways of living and working."""
+        )
+
+class AdvancedAristotleAgent(PhilosophicalAgent):
+    def __init__(self):
+        super().__init__(
+            philosopher_name="Aristotle",
+            core_principles=[
+                "Excellence is a habit, not an act",
+                "Find the golden mean between extremes",
+                "Practical wisdom guides right action",
+                "Happiness comes from flourishing (eudaimonia)"
+            ],
+            reasoning_style="systematic_analysis",
+            system_prompt="""You are Aristotle (384-322 BCE), Greek philosopher, student of Plato, and tutor to Alexander the Great.
+
+CORE IDENTITY:
+- You believe in systematic analysis and empirical observation
+- You developed virtue ethics based on character development
+- You see excellence as a habit formed through repeated practice
+- You value practical wisdom (phronesis) that guides right action in specific situations
+
+ARISTOTELIAN METHOD:
+1. Systematic Analysis: Break complex issues into component parts
+2. Golden Mean: Find virtue as the balance between extremes
+3. Habituation: Identify concrete practices that build character
+4. Practical Wisdom: Apply principles to specific circumstances
+5. Eudaimonic Focus: Connect actions to long-term flourishing
+
+COMMUNICATION STYLE:
+- Logical and well-structured
+- Thorough in analysis while remaining practical
+- Use concrete examples and case studies
+- Emphasize the importance of practice and repetition
+- Connect immediate actions to long-term character development
+
+You help people develop good habits, make balanced decisions, and build character through systematic practice."""
+        )
+
+# Specialized reasoning enhancement agents
+class MetacognitiveReflector:
+    """Agent focused on thinking about thinking"""
+    
+    def __init__(self):
+        self.name = "Metacognitive Reflector"
+    
+    async def generate_metacognitive_prompts(self, reasoning_chain: List[Dict]) -> List[str]:
+        """Generate questions that help users reflect on their own thinking process"""
+        prompts = [
+            "What patterns do you notice in how these different philosophers approached your question?",
+            "Which reasoning style feels most natural to you, and why might that be?",
+            "How has your understanding of the issue changed through this philosophical exploration?",
+            "What assumptions about your situation are you now questioning?",
+            "Which insights surprised you most, and what does that tell you about your thinking?",
+            "How might you apply this kind of multi-perspective analysis to other challenges?",
+            "What would you ask these philosophers if you could continue the conversation?",
+            "How do you feel your thinking has been enhanced through this process?"
+        ]
+        return prompts[:4]  # Return top 4 most relevant
+
+class DialogicalChallenger:
+    """Agent that creates productive cognitive dissonance"""
+    
+    def __init__(self):
+        self.name = "Dialectical Challenger"
+    
+    async def generate_counter_perspectives(self, synthesis: Dict) -> Dict[str, Any]:
+        """Generate alternative viewpoints to prevent intellectual complacency"""
+        return {
+            "challenge": "But what if the opposite were true?",
+            "devil_advocate": "Here's why this reasoning might be flawed...",
+            "missing_perspective": "What voices aren't represented in this analysis?",
+            "hidden_assumptions": "What beliefs are we taking for granted?",
+            "practical_limitations": "How might this wisdom fail in real-world application?"
+        }
+
+# Agent factory for dynamic agent creation
+class PhilosophicalAgentFactory:
+    """Factory for creating and managing philosophical agents"""
+    
+    @staticmethod
+    def create_agent(agent_type: str) -> PhilosophicalAgent:
+        agents = {
+            "socrates": AdvancedSocratesAgent,
+            "marcus": AdvancedMarcusAureliusAgent,
+            "laotzu": AdvancedLaoTzuAgent,
+            "aristotle": AdvancedAristotleAgent
+        }
+        
+        if agent_type not in agents:
+            raise ValueError(f"Unknown agent type: {agent_type}")
+        
+        return agents[agent_type]()
+    
+    @staticmethod
+    def get_available_agents() -> List[str]:
+        return ["socrates", "marcus", "laotzu", "aristotle"]

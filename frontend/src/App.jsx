@@ -6,6 +6,7 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [thinkingSteps, setThinkingSteps] = useState([]);
+  const [typingMessage, setTypingMessage] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -14,20 +15,21 @@ export default function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, thinkingSteps]);
+  }, [messages, thinkingSteps, typingMessage]);
 
   const simulateThinkingSteps = (query) => {
-    const steps = [
-      { id: 1, title: "Analyzing query", description: "Understanding the philosophical dimensions of your question", status: "thinking" },
-      { id: 2, title: "Selecting philosophers", description: "Choosing the most relevant ancient wisdom traditions", status: "pending" },
-      { id: 3, title: "Consulting Socrates", description: "Applying Socratic questioning and epistemic inquiry", status: "pending" },
-      { id: 4, title: "Consulting Marcus Aurelius", description: "Drawing on Stoic principles and practical wisdom", status: "pending" },
-      { id: 5, title: "Consulting Lao Tzu", description: "Integrating Daoist flow and natural harmony", status: "pending" },
-      { id: 6, title: "Consulting Aristotle", description: "Applying systematic analysis and virtue ethics", status: "pending" },
-      { id: 7, title: "Synthesizing wisdom", description: "Weaving together multiple philosophical perspectives", status: "pending" }
+    const baseSteps = [
+      { id: 1, title: "Analyzing query", description: `Parsing: "${query.slice(0, 50)}${query.length > 50 ? '...' : ''}"`, status: "thinking" },
+      { id: 2, title: "Identifying themes", description: "Detecting philosophical dimensions and core concepts", status: "pending" },
+      { id: 3, title: "Selecting philosophers", description: "Choosing the most relevant ancient wisdom traditions", status: "pending" },
+      { id: 4, title: "Consulting Socrates", description: "Applying Socratic questioning and epistemic inquiry", status: "pending" },
+      { id: 5, title: "Consulting Marcus Aurelius", description: "Drawing on Stoic principles and practical wisdom", status: "pending" },
+      { id: 6, title: "Consulting Lao Tzu", description: "Integrating Daoist flow and natural harmony", status: "pending" },
+      { id: 7, title: "Consulting Aristotle", description: "Applying systematic analysis and virtue ethics", status: "pending" },
+      { id: 8, title: "Cross-referencing wisdom", description: "Finding convergences and complementary insights", status: "pending" },
+      { id: 9, title: "Synthesizing response", description: "Weaving together multiple philosophical perspectives", status: "pending" }
     ];
-    
-    return steps;
+    return baseSteps;
   };
 
   const updateThinkingStep = (stepId, status) => {
@@ -49,11 +51,9 @@ export default function App() {
     setQuery("");
     setLoading(true);
 
-    // Initialize thinking steps
     const steps = simulateThinkingSteps(currentQuery);
     setThinkingSteps(steps);
 
-    // Simulate thinking process
     for (let i = 0; i < steps.length; i++) {
       await new Promise(resolve => setTimeout(resolve, 800));
       updateThinkingStep(steps[i].id, "completed");
@@ -61,6 +61,8 @@ export default function App() {
         updateThinkingStep(steps[i + 1].id, "thinking");
       }
     }
+
+    setTypingMessage({ timestamp: new Date() });
 
     try {
       const res = await fetch("http://localhost:8000/ask", {
@@ -72,39 +74,227 @@ export default function App() {
       const data = await res.json();
 
       let botReply;
-      if (typeof data.synthesis === "string") {
-        botReply = data.synthesis;
-      } else if (data.responses) {
+      if (data.reasoning_chain && data.synthesis) {
+        // Format responses from reasoning_chain
+        const responses = {};
+        data.reasoning_chain.forEach((step) => {
+          const philosopher = step.philosopher;
+          let text = `**Core Insight**: ${step.core_insight || 'No insight provided'}\n\n`;
+          text += "**Reasoning Process**:\n";
+          if (Array.isArray(step.reasoning_process)) {
+            step.reasoning_process.forEach((rp) => {
+              if (typeof rp === 'object') {
+                text += `- ${rp.type || rp.step || ''}: ${rp.description || rp.exploration || rp.analysis || rp['sub-step'] || ''}\n`;
+              } else {
+                text += `- ${rp}\n`;
+              }
+            });
+          } else {
+            text += "- No reasoning process provided\n";
+          }
+          text += `\n**Metacognitive Awareness**: ${Array.isArray(step.metacognitive_awareness) ? step.metacognitive_awareness.map(ma => ma.reflection || ma).join('\n') : step.metacognitive_awareness || 'None'}\n`;
+          text += `**Socratic Catalyst**: ${step.socratic_catalyst || 'None'}\n`;
+          text += `**Practical Application**: ${Array.isArray(step.practical_application) ? step.practical_application.map(pa => pa.step || pa).join('\n') : step.practical_application || 'None'}\n`;
+          text += `**Connection to Principles**: ${Array.isArray(step.connection_to_principles) ? step.connection_to_principles.map(cp => cp.link || cp).join('\n') : step.connection_to_principles || 'None'}\n`;
+          text += `**Cognitive Stimulation**: ${Array.isArray(step.cognitive_stimulation) ? step.cognitive_stimulation.map(cs => cs.exercise || cs).join('\n') : step.cognitive_stimulation || 'None'}`;
+          responses[philosopher] = text;
+        });
+
+        // Format synthesis into a structured string
+        let synthesisText = '';
+        if (typeof data.synthesis === 'object') {
+          synthesisText += `**Integrated Wisdom**: ${data.synthesis.integrated_wisdom?.unified_insight_combining_all_perspectives || data.synthesis.integrated_wisdom || 'No unified insight provided'}\n\n`;
+          synthesisText += "**Key Insights**:\n";
+          if (Array.isArray(data.synthesis.key_insights)) {
+            data.synthesis.key_insights.forEach((ki) => {
+              synthesisText += `- ${ki.most_important_discovery || ki.unexamined_life_is_not_worth_living || ki || 'No insight provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No key insights provided\n";
+          }
+          synthesisText += "\n**Practical Steps**:\n";
+          if (Array.isArray(data.synthesis.practical_steps)) {
+            data.synthesis.practical_steps.forEach((ps) => {
+              synthesisText += `- ${ps.step_1 || ps.step_2 || ps.step_3 || ps.step || ps || 'No step provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No practical steps provided\n";
+          }
+          synthesisText += "\n**Metacognitive Enhancement**:\n";
+          const metacognitiveEnhancement = data.synthesis.metacognitive_enhancement;
+          if (Array.isArray(metacognitiveEnhancement)) {
+            metacognitiveEnhancement.forEach((me) => {
+              synthesisText += `- ${me.reflection || me['self-awareness'] || me || 'No enhancement provided'}\n`;
+            });
+          } else if (typeof metacognitiveEnhancement === 'string') {
+            synthesisText += `- ${metacognitiveEnhancement}\n`;
+          } else if (typeof metacognitiveEnhancement === 'object' && metacognitiveEnhancement !== null) {
+            synthesisText += `- ${JSON.stringify(metacognitiveEnhancement)}\n`;
+          } else {
+            synthesisText += "- No metacognitive enhancement provided\n";
+          }
+          synthesisText += "\n**Reasoning Quality Assessment**:\n";
+          if (Array.isArray(data.synthesis.reasoning_quality_assessment)) {
+            data.synthesis.reasoning_quality_assessment.forEach((rqa) => {
+              synthesisText += `- ${rqa.evaluation_of_reasoning_process || rqa || 'No assessment provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No reasoning quality assessment provided\n";
+          }
+          synthesisText += "\n**Cognitive Bridges**:\n";
+          if (Array.isArray(data.synthesis.cognitive_bridges)) {
+            data.synthesis.cognitive_bridges.forEach((cb) => {
+              synthesisText += `- ${cb.connection_between_different_thinking_modes || cb || 'No bridge provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No cognitive bridges provided\n";
+          }
+          synthesisText += "\n**Transformative Elements**:\n";
+          if (Array.isArray(data.synthesis.transformative_elements)) {
+            data.synthesis.transformative_elements.forEach((te) => {
+              synthesisText += `- ${te.aspect_that_could_change_user_perspective || te.shift_in_focusing_on_what_you_can_control || te || 'No element provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No transformative elements provided\n";
+          }
+          synthesisText += "\n**Application Scenarios**:\n";
+          if (Array.isArray(data.synthesis.application_scenarios)) {
+            data.synthesis.application_scenarios.forEach((as) => {
+              synthesisText += `- ${as.where_this_wisdom_applies || as || 'No scenario provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No application scenarios provided\n";
+          }
+          synthesisText += "\n**Deepening Questions**:\n";
+          if (Array.isArray(data.synthesis.deepening_questions)) {
+            data.synthesis.deepening_questions.forEach((dq) => {
+              synthesisText += `- ${dq.questions_for_continued_exporation || dq || 'No question provided'}\n`;
+            });
+          } else {
+            synthesisText += "- No deepening questions provided\n";
+          }
+          synthesisText += "\n**Metacognitive Prompts**:\n";
+          synthesisText += (Array.isArray(data.synthesis.metacognitive_prompts) ? data.synthesis.metacognitive_prompts.join('\n') : data.synthesis.metacognitive_prompts || 'None') + '\n';
+          synthesisText += "\n**Dialectical Challenges**:\n";
+          if (data.synthesis.dialectical_challenges) {
+            Object.entries(data.synthesis.dialectical_challenges).forEach(([key, value]) => {
+              synthesisText += `- ${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}\n`;
+            });
+          } else {
+            synthesisText += "- No dialectical challenges provided\n";
+          }
+          synthesisText += `\n**Synthesis Quality Score**: ${data.synthesis.synthesis_quality_score || 'Not provided'}\n`;
+          synthesisText += "**Cognitive Enhancement Elements**:\n";
+          synthesisText += (Array.isArray(data.synthesis.cognitive_enhancement_elements) ? data.synthesis.cognitive_enhancement_elements.join('\n') : data.synthesis.cognitive_enhancement_elements || 'None');
+        } else {
+          synthesisText = data.synthesis || 'No synthesis provided';
+        }
+
         botReply = {
           type: "philosophical_response",
-          philosophers: data.philosophers || Object.keys(data.responses || {}),
-          responses: data.responses,
-          synthesis: data.synthesis,
-          metadata: {
-            timestamp: data.timestamp,
-            philosophers_consulted: data.philosophers
-          }
+          philosophers: data.philosophers_consulted,
+          responses: responses,
+          synthesis: synthesisText,
+        };
+      } else if (typeof data.synthesis === "string") {
+        botReply = {
+          type: "synthesis_response",
+          philosophers: data.philosophers || ["Ancient Philosophers"],
+          content: data.synthesis
         };
       } else {
-        botReply = JSON.stringify(data, null, 2);
+        botReply = {
+          type: "formatted_response",
+          content: JSON.stringify(data, null, 2)
+        };
       }
 
       const botMessage = { sender: "bot", text: botReply, timestamp: new Date() };
       setMessages((prev) => [...prev, botMessage]);
       setThinkingSteps([]);
     } catch (error) {
+      const errorReply = {
+        type: "error_response",
+        content: "I apologize, but I'm having trouble connecting right now. Please try again in a moment.",
+        error: error.message
+      };
       setMessages((prev) => [
         ...prev,
-        { sender: "bot", text: "I apologize, but I'm having trouble connecting right now. Please try again in a moment.", timestamp: new Date() },
+        { sender: "bot", text: errorReply, timestamp: new Date() },
       ]);
       setThinkingSteps([]);
     } finally {
       setLoading(false);
+      setTypingMessage(null);
     }
   };
 
   const formatTime = (timestamp) => {
     return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const renderResponse = (response) => {
+    if (typeof response === "string") {
+      return <p className="message-text">{response}</p>;
+    }
+
+    switch (response.type) {
+      case "synthesis_response":
+        return renderSynthesisResponse(response);
+      case "philosophical_response":
+        return renderPhilosophicalResponse(response);
+      case "error_response":
+        return renderErrorResponse(response);
+      case "formatted_response":
+        return renderFormattedResponse(response);
+      default:
+        return <p className="message-text">{JSON.stringify(response, null, 2)}</p>;
+    }
+  };
+
+  const renderSynthesisResponse = (response) => {
+    return (
+      <div className="synthesis-response">
+        <div className="philosophers-consulted">
+          <Brain size={16} />
+          <span>Consulted: {response.philosophers?.join(", ") || "Ancient Philosophers"}</span>
+        </div>
+        <div className="synthesis-header">
+          <Sparkles size={20} />
+          <h4>Philosophical Insight</h4>
+        </div>
+        <p className="synthesis-text" style={{ whiteSpace: 'pre-wrap' }}>{response.content}</p>
+      </div>
+    );
+  };
+
+  const renderErrorResponse = (response) => {
+    return (
+      <div className="error-response">
+        <div className="error-header">
+          <Shield size={20} />
+          <h4>Connection Issue</h4>
+        </div>
+        <p className="error-text">{response.content}</p>
+        {response.error && (
+          <div className="error-details">
+            <small>Technical details: {response.error}</small>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderFormattedResponse = (response) => {
+    return (
+      <div className="stream-message">
+        <div className="synthesis-header">
+          <Bot size={20} />
+          <h4>Raw Response</h4>
+        </div>
+        <pre className="message-text">{response.content}</pre>
+      </div>
+    );
   };
 
   const renderPhilosophicalResponse = (response) => {
@@ -125,7 +315,7 @@ export default function App() {
               </div>
               <h4 className="philosopher-name">{philosopher}</h4>
             </div>
-            <p className="philosopher-text">{text}</p>
+            <p className="philosopher-text" style={{ whiteSpace: 'pre-wrap' }}>{text}</p>
           </div>
         ))}
 
@@ -135,7 +325,7 @@ export default function App() {
               <Sparkles size={20} />
               <h4>Integrated Wisdom</h4>
             </div>
-            <p className="synthesis-text">{synthesis}</p>
+            <p className="synthesis-text" style={{ whiteSpace: 'pre-wrap' }}>{synthesis}</p>
           </div>
         )}
       </div>
@@ -145,7 +335,6 @@ export default function App() {
   return (
     <div className="app-container">
       <div className="main-container">
-        {/* Header */}
         <header className="header">
           <div className="header-content">
             <div className="header-left">
@@ -174,7 +363,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Chat Container */}
         <div className="chat-container">
           <div className="messages-container">
             {messages.length === 0 && !loading && (
@@ -214,7 +402,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Thinking Steps */}
             {thinkingSteps.length > 0 && (
               <div className="thinking-container">
                 <div className="thinking-header">
@@ -223,7 +410,7 @@ export default function App() {
                 </div>
                 <div className="thinking-steps">
                   {thinkingSteps.map((step) => (
-                    <div key={step.id} className="thinking-step">
+                    <div key={step.id} className={`thinking-step ${step.status}`}>
                       <div className="step-icon">
                         {step.status === "completed" ? (
                           <CheckCircle size={20} className="completed" />
@@ -251,13 +438,7 @@ export default function App() {
                   </div>
                   <div className="message-wrapper">
                     <div className={`message-bubble ${msg.sender}`}>
-                      {typeof msg.text === "string" ? (
-                        <p className="message-text">{msg.text}</p>
-                      ) : msg.text?.type === "philosophical_response" ? (
-                        renderPhilosophicalResponse(msg.text)
-                      ) : (
-                        <pre className="json-response">{JSON.stringify(msg.text, null, 2)}</pre>
-                      )}
+                      {renderResponse(msg.text)}
                     </div>
                     <div className={`timestamp ${msg.sender}`}>
                       {formatTime(msg.timestamp)}
@@ -267,10 +448,34 @@ export default function App() {
               </div>
             ))}
 
+            {typingMessage && (
+              <div className="message-row bot">
+                <div className="message-content">
+                  <div className="avatar bot">
+                    <Brain size={20} />
+                  </div>
+                  <div className="message-wrapper">
+                    <div className="message-bubble bot">
+                      <div className="typing-indicator">
+                        <div className="typing-dots">
+                          <div className="dot"></div>
+                          <div className="dot"></div>
+                          <div className="dot"></div>
+                        </div>
+                        <span>Synthesizing wisdom...</span>
+                      </div>
+                    </div>
+                    <div className="timestamp bot">
+                      {formatTime(typingMessage.timestamp)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Form */}
           <div className="input-container">
             <div className="input-wrapper">
               <div className="input-field">
@@ -307,592 +512,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        .app-container {
-          min-height: 100vh;
-          background: linear-gradient(to bottom right, #020617, #1e3a8a, #0f172a);
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-        }
-
-        .main-container {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        /* Header Styles */
-        .header {
-          background: rgba(15, 23, 42, 0.9);
-          border-bottom: 1px solid rgba(71, 85, 105, 0.5);
-          padding: 16px 24px;
-        }
-
-        .header-content {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .logo-container {
-          position: relative;
-        }
-
-        .logo {
-          width: 40px;
-          height: 40px;
-          background: linear-gradient(to right, #2563eb, #06b6d4);
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-        }
-
-        .logo-pulse {
-          position: absolute;
-          top: -4px;
-          right: -4px;
-          width: 16px;
-          height: 16px;
-          background: #60a5fa;
-          border-radius: 50%;
-          border: 2px solid #0f172a;
-          animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-
-        .title {
-          font-size: 24px;
-          font-weight: bold;
-          color: white;
-          margin: 0;
-        }
-
-        .subtitle {
-          font-size: 14px;
-          color: #94a3b8;
-          margin: 0;
-        }
-
-        .header-right {
-          display: flex;
-          gap: 16px;
-        }
-
-        .status-badge {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: rgba(30, 41, 59, 0.6);
-          padding: 6px 12px;
-          border-radius: 20px;
-          border: 1px solid rgba(71, 85, 105, 0.5);
-          color: #cbd5e1;
-          font-size: 14px;
-        }
-
-        /* Chat Container */
-        .chat-container {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          min-height: 0;
-        }
-
-        .messages-container {
-          flex: 1;
-          overflow-y: auto;
-          padding: 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        /* Welcome Screen */
-        .welcome-screen {
-          text-align: center;
-          padding: 80px 0;
-        }
-
-        .welcome-content {
-          margin-bottom: 32px;
-        }
-
-        .welcome-logo {
-          width: 80px;
-          height: 80px;
-          background: linear-gradient(to right, #2563eb, #06b6d4);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 16px;
-          color: white;
-        }
-
-        .welcome-title {
-          font-size: 32px;
-          font-weight: 600;
-          color: white;
-          margin-bottom: 8px;
-        }
-
-        .welcome-description {
-          color: #94a3b8;
-          max-width: 500px;
-          margin: 0 auto;
-          line-height: 1.6;
-        }
-
-        .philosophers-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 16px;
-          max-width: 1000px;
-          margin: 0 auto;
-        }
-
-        .philosopher-card {
-          background: rgba(30, 41, 59, 0.5);
-          border: 1px solid rgba(71, 85, 105, 0.5);
-          border-radius: 16px;
-          padding: 24px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .philosopher-card:hover {
-          transform: translateY(-4px);
-          border-color: #3b82f6;
-          box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1);
-        }
-
-        .philosopher-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 12px;
-          font-size: 24px;
-        }
-
-        .socrates .philosopher-icon { background: linear-gradient(to right, #eab308, #f97316); }
-        .marcus .philosopher-icon { background: linear-gradient(to right, #ef4444, #f43f5e); }
-        .lao .philosopher-icon { background: linear-gradient(to right, #14b8a6, #06b6d4); }
-        .aristotle .philosopher-icon { background: linear-gradient(to right, #8b5cf6, #6366f1); }
-
-        .philosopher-card h4 {
-          color: white;
-          font-weight: 600;
-          margin-bottom: 8px;
-        }
-
-        .philosopher-card p {
-          color: #94a3b8;
-          font-size: 14px;
-          line-height: 1.5;
-        }
-
-        /* Thinking Steps */
-        .thinking-container {
-          background: rgba(30, 41, 59, 0.5);
-          border: 1px solid rgba(71, 85, 105, 0.5);
-          border-radius: 16px;
-          padding: 24px;
-        }
-
-        .thinking-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 16px;
-        }
-
-        .thinking-header h3 {
-          color: white;
-          font-size: 18px;
-          font-weight: 600;
-        }
-
-        .thinking-spinner {
-          animation: spin 1s linear infinite;
-          color: #60a5fa;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .thinking-steps {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .thinking-step {
-          display: flex;
-          gap: 12px;
-          align-items: flex-start;
-        }
-
-        .step-icon {
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-
-        .step-icon .completed { color: #10b981; }
-        .step-icon .thinking { color: #60a5fa; animation: spin 1s linear infinite; }
-        .step-icon .pending { color: #6b7280; }
-
-        .step-content {
-          flex: 1;
-        }
-
-        .step-title {
-          font-weight: 500;
-          margin-bottom: 4px;
-        }
-
-        .step-title.completed { color: #86efac; }
-        .step-title.thinking { color: #93c5fd; }
-        .step-title.pending { color: #94a3b8; }
-
-        .step-description {
-          color: #94a3b8;
-          font-size: 14px;
-          line-height: 1.4;
-        }
-
-        /* Messages */
-        .message-row {
-          display: flex;
-          animation: fadeIn 0.5s ease-out;
-        }
-
-        .message-row.user {
-          justify-content: flex-end;
-        }
-
-        .message-content {
-          display: flex;
-          gap: 12px;
-          max-width: 80%;
-          width: 100%;
-        }
-
-        .message-row.user .message-content {
-          flex-direction: row-reverse;
-        }
-
-        .avatar {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          color: white;
-        }
-
-        .avatar.user {
-          background: linear-gradient(to right, #0891b2, #2563eb);
-        }
-
-        .avatar.bot {
-          background: linear-gradient(to right, #2563eb, #7c3aed);
-        }
-
-        .message-wrapper {
-          flex: 1;
-        }
-
-        .message-row.user .message-wrapper {
-          text-align: right;
-        }
-
-        .message-bubble {
-          display: inline-block;
-          width: 100%;
-          padding: 16px 20px;
-          border-radius: 16px;
-          border: 1px solid;
-          transition: all 0.3s ease;
-        }
-
-        .message-bubble.user {
-          background: linear-gradient(to right, #0891b2, #2563eb);
-          color: white;
-          border-color: rgba(59, 130, 246, 0.3);
-          border-bottom-right-radius: 4px;
-        }
-
-        .message-bubble.bot {
-          background: rgba(30, 41, 59, 0.5);
-          color: white;
-          border-color: rgba(71, 85, 105, 0.5);
-          border-bottom-left-radius: 4px;
-        }
-
-        .message-text {
-          line-height: 1.6;
-          white-space: pre-wrap;
-        }
-
-        .timestamp {
-          font-size: 12px;
-          color: #6b7280;
-          margin-top: 4px;
-        }
-
-        .timestamp.user {
-          text-align: right;
-        }
-
-        /* Philosophical Response */
-        .philosophical-response {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .philosophers-consulted {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: #93c5fd;
-          font-size: 14px;
-        }
-
-        .philosopher-response {
-          background: rgba(30, 41, 59, 0.3);
-          border: 1px solid rgba(71, 85, 105, 0.5);
-          border-radius: 12px;
-          padding: 16px;
-        }
-
-        .philosopher-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-
-        .philosopher-avatar {
-          width: 24px;
-          height: 24px;
-          background: #3b82f6;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-          font-weight: bold;
-          color: white;
-        }
-
-        .philosopher-name {
-          color: #93c5fd;
-          font-weight: 600;
-          text-transform: capitalize;
-        }
-
-        .philosopher-text {
-          color: #cbd5e1;
-          line-height: 1.5;
-          font-size: 14px;
-        }
-
-        .synthesis-response {
-          background: rgba(30, 58, 138, 0.2);
-          border: 1px solid rgba(59, 130, 246, 0.3);
-          border-radius: 12px;
-          padding: 16px;
-        }
-
-        .synthesis-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-
-        .synthesis-header h4 {
-          color: #93c5fd;
-          font-weight: 600;
-        }
-
-        .synthesis-text {
-          color: #cbd5e1;
-          line-height: 1.6;
-        }
-
-        .json-response {
-          font-size: 14px;
-          overflow-x: auto;
-          background: rgba(15, 23, 42, 0.5);
-          padding: 12px;
-          border-radius: 8px;
-          border: 1px solid rgba(71, 85, 105, 0.3);
-          color: #cbd5e1;
-        }
-
-        /* Input Container */
-        .input-container {
-          border-top: 1px solid rgba(71, 85, 105, 0.5);
-          background: rgba(15, 23, 42, 0.6);
-          padding: 16px 24px;
-        }
-
-        .input-field {
-          display: flex;
-          align-items: center;
-          background: rgba(30, 41, 59, 0.6);
-          border: 1px solid rgba(71, 85, 105, 0.5);
-          border-radius: 16px;
-          transition: border-color 0.3s ease;
-        }
-
-        .input-field:focus-within {
-          border-color: #3b82f6;
-        }
-
-        .input-field input {
-          flex: 1;
-          padding: 16px 20px;
-          background: transparent;
-          border: none;
-          color: white;
-          font-size: 16px;
-          outline: none;
-        }
-
-        .input-field input::placeholder {
-          color: #94a3b8;
-        }
-
-        .send-button {
-          margin: 8px;
-          padding: 12px;
-          background: linear-gradient(to right, #2563eb, #06b6d4);
-          color: white;
-          border: none;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .send-button:hover:not(:disabled) {
-          background: linear-gradient(to right, #1d4ed8, #0891b2);
-          transform: scale(1.05);
-        }
-
-        .send-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .input-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 12px;
-          font-size: 12px;
-          color: #6b7280;
-        }
-
-        .footer-left {
-          display: flex;
-          gap: 16px;
-        }
-
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        /* Scrollbar */
-        .messages-container::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .messages-container::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        .messages-container::-webkit-scrollbar-thumb {
-          background: rgba(59, 130, 246, 0.3);
-          border-radius: 3px;
-        }
-
-        .messages-container::-webkit-scrollbar-thumb:hover {
-          background: rgba(59, 130, 246, 0.5);
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-          .main-container {
-            max-width: 100%;
-          }
-          
-          .header {
-            padding: 12px 16px;
-          }
-          
-          .messages-container {
-            padding: 16px;
-          }
-          
-          .input-container {
-            padding: 12px 16px;
-          }
-          
-          .philosophers-grid {
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          }
-          
-          .message-content {
-            max-width: 95%;
-          }
-          
-          .footer-left {
-            flex-direction: column;
-            gap: 4px;
-          }
-        }
-      `}</style>
     </div>
   );
 }

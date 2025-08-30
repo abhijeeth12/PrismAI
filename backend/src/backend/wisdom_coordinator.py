@@ -1,288 +1,599 @@
 # wisdom_coordinator.py
 import json
 import asyncio
-import inspect
 import logging
-import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, AsyncGenerator
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
-logger = logging.getLogger(__name__)
-
-# --- Ollama client (local by default) ---
-# Install: pip install ollama-python
 from ollama import Client
+import os
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")  # change to your pulled model
-client = Client(host=OLLAMA_HOST)
-
-logger.debug(f"Ollama client configured for host={OLLAMA_HOST} model={OLLAMA_MODEL}")
-
-
-# Import your agent classes (ensure path is correct)
 from tools.llm_powered_agents import (
-    AdvancedSocratesAgent,
-    AdvancedMarcusAureliusAgent,
-    AdvancedLaoTzuAgent,
-    AdvancedAristotleAgent,
+    PhilosophicalAgentFactory,
+    MetacognitiveReflector,
+    DialogicalChallenger
 )
 
+logger = logging.getLogger(__name__)
 
-class AdvancedWisdomCoordinator:
-    """Metacognitive coordinator that selects and orchestrates philosophical agents"""
+# Ollama configuration
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+client = Client(host=OLLAMA_HOST)
 
+class System15Controller:
+    """Implements the revolutionary System 1.5 metacognitive framework"""
+    
     def __init__(self):
-        self.agents = {
-            "socrates": AdvancedSocratesAgent(),
-            "marcus": AdvancedMarcusAureliusAgent(),
-            "laotzu": AdvancedLaoTzuAgent(),
-            "aristotle": AdvancedAristotleAgent(),
-        }
+        self.cognitive_load_threshold = 0.7
+        self.complexity_levels = ["simple", "moderate", "complex", "advanced"]
+    
+    async def analyze_cognitive_load(self, query: str) -> Dict[str, Any]:
+        """Assess cognitive complexity and user readiness"""
+        analysis_prompt = f"""
+Analyze the cognitive load and complexity of this query:
+"{query}"
 
-        self.selector_prompt = """You are an AI coordinator that intelligently selects which philosophical agents should respond to a user query based on the nature of their concern.
+Rate on scales of 0.0-1.0:
+- emotional_intensity: How emotionally charged is this?
+- conceptual_complexity: How many abstract concepts are involved?
+- decision_urgency: How time-sensitive is this?
+- ambiguity_level: How unclear or vague is this?
+- personal_stakes: How significant is this to the person's life?
+
+Return JSON:
+{{
+    "overall_load": 0.0-1.0,
+    "emotional_intensity": 0.0-1.0,
+    "conceptual_complexity": 0.0-1.0,
+    "decision_urgency": 0.0-1.0,
+    "ambiguity_level": 0.0-1.0,
+    "personal_stakes": 0.0-1.0,
+    "recommended_approach": "gentle|standard|intensive",
+    "suggested_agents": ["agent1", "agent2"],
+    "pacing_recommendation": "slow|normal|rapid"
+}}
+"""
+        
+        try:
+            messages = [{"role": "user", "content": analysis_prompt}]
+            response = await self._call_ollama(messages, temperature=0.3)
+            
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                return json.loads(response[json_start:json_end])
+        except:
+            pass
+        
+        # Fallback analysis
+        return {
+            "overall_load": 0.5,
+            "emotional_intensity": 0.5,
+            "conceptual_complexity": 0.5,
+            "decision_urgency": 0.3,
+            "ambiguity_level": 0.4,
+            "personal_stakes": 0.6,
+            "recommended_approach": "standard",
+            "suggested_agents": ["socrates", "marcus"],
+            "pacing_recommendation": "normal"
+        }
+    
+    async def _call_ollama(self, messages: List[Dict], temperature: float = 0.7) -> str:
+        """Async Ollama API wrapper"""
+        def sync_call():
+            options = {"temperature": temperature, "num_predict": 800}
+            resp = client.chat(model=OLLAMA_MODEL, messages=messages, options=options)
+            if isinstance(resp, dict):
+                return resp.get("message", {}).get("content", "")
+            return getattr(resp.message, "content", "")
+        
+        return await asyncio.to_thread(sync_call)
+
+class AdvancedAgentOrchestrator:
+    """Intelligent orchestration of multiple philosophical agents"""
+    
+    def __init__(self):
+        self.agent_factory = PhilosophicalAgentFactory()
+        self.collaboration_patterns = {
+            "sequential": self._sequential_reasoning,
+            "parallel": self._parallel_reasoning,
+            "hierarchical": self._hierarchical_reasoning,
+            "dialectical": self._dialectical_reasoning
+        }
+    
+    async def select_optimal_agents(self, query: str, cognitive_analysis: Dict) -> Dict[str, Any]:
+        """AI-powered intelligent agent selection"""
+        selection_prompt = f"""
+You are an expert AI coordinator selecting philosophical agents for optimal wisdom generation.
+
+QUERY: "{query}"
+COGNITIVE_ANALYSIS: {json.dumps(cognitive_analysis, indent=2)}
+
 AGENT CAPABILITIES:
-- SOCRATES: Best for examining assumptions, defining concepts, revealing contradictions, epistemic inquiry
-- MARCUS AURELIUS: Best for anxiety, control issues, resilience, practical action under pressure
-- LAO TZU: Best for flow/resistance, work-life balance, accepting change, finding natural solutions  
-- ARISTOTLE: Best for systematic analysis, habit formation, virtue development, logical reasoning
+- SOCRATES: Assumption examination, definitional clarity, epistemic inquiry, revealing contradictions
+- MARCUS AURELIUS: Anxiety management, control dichotomy, control resilience building, practical action
+- LAO TZU: Flow states, natural solutions, balance, reducing resistance and force
+- ARISTOTLE: Systematic analysis, habit formation, virtue development, golden mean
 
 SELECTION CRITERIA:
-Analyze the query for:
-1. EMOTIONAL TONE: anxiety→Marcus, confusion→Socrates, forcing→Lao Tzu, analysis→Aristotle
-2. PROBLEM TYPE: existential→Socrates, practical→Marcus/Aristotle, flow→Lao Tzu  
-3. COMPLEXITY: simple→1-2 agents, complex→3-4 agents
-4. USER NEEDS: questioning→Socrates, resilience→Marcus, balance→Lao Tzu, structure→Aristotle
+1. Emotional tone → Agent fit (anxiety→Marcus, confusion→Socrates, forcing→Lao Tzu, analysis→Aristotle)
+2. Problem complexity → Number of agents (simple=2, complex=3-4)
+3. User readiness → Depth level (gentle/standard/intensive)
+4. Complementary perspectives → Avoid redundancy, ensure diverse viewpoints
 
-Return a JSON object with:
-{
-  "selected_agents": ["agent1", "agent2"],
-  "reasoning": "Why these agents were selected",
-  "primary_agent": "agent_name",
-  "query_analysis": {
-    "emotional_tone": "description",
-    "problem_type": "category",
-    "key_themes": ["theme1", "theme2"]
-  }
-}
-
-Select 2-3 agents maximum for optimal response quality.
+Return JSON:
+{{
+    "selected_agents": ["agent1", "agent2", "agent3"],
+    "primary_agent": "most_relevant_agent",
+    "collaboration_pattern": "sequential|parallel|hierarchical|dialectical",
+    "reasoning_depth": "surface|moderate|deep|profound",
+    "selection_rationale": "detailed explanation of choices",
+    "expected_synergies": ["how agents complement each other"]
+}}
+Make sure "selected_agents" is a list of strings only, using lowercase names like "socrates", "marcus", "laotzu", "aristotle".
 """
-
-    # ---------- Helper to call Ollama chat ----------
-    def _call_ollama_chat(self, messages, temperature=0.3, max_tokens=400, model=None):
-        """
-        Synchronous helper to call client.chat and return the assistant content.
-        Maps max_tokens -> Ollama's num_predict in options.
-        """
-        model_name = model or OLLAMA_MODEL
-        options = {"temperature": temperature, "num_predict": max_tokens}
+        
         try:
-            resp = client.chat(model=model_name, messages=messages, options=options)
-            # Ollama response has 'message' field: resp['message']['content'] or resp.message.content
-            content = None
-            if isinstance(resp, dict):
-                # dict-like response
-                msg = resp.get("message") or {}
-                content = msg.get("content") if isinstance(msg, dict) else None
-            else:
-                # object-like response
-                msg = getattr(resp, "message", None)
-                content = getattr(msg, "content", None) if msg is not None else None
-
-            # fallback: sometimes top-level 'response' key exists (generate endpoint)
-            if not content:
-                if isinstance(resp, dict) and "response" in resp:
-                    content = resp["response"]
-            return content
+            messages = [{"role": "user", "content": selection_prompt}]
+            response = await self._call_ollama(messages, temperature=0.4)
+            
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                return json.loads(response[json_start:json_end])
         except Exception as e:
-            logger.exception("Ollama chat call failed")
-            raise
-
-    # ---------- Selection ----------
-    async def analyze_and_select_agents(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
-        try:
-            messages = [
-                {"role": "system", "content": self.selector_prompt},
-                {"role": "user", "content": f"User Query: {query}\nContext: {context or {}}"}
-            ]
-
-            # blocking client call -> run in thread
-            def sync_call():
-                return self._call_ollama_chat(messages, temperature=0.3, max_tokens=400)
-
-            raw = await asyncio.to_thread(sync_call)
-
-            # robustly extract and parse JSON
-            try:
-                if not raw:
-                    raise ValueError("Empty selection content")
-                # raw might contain surrounding text: try to find JSON block first
-                raw_str = raw.strip()
-                # If raw looks like JSON, parse directly; else try to locate a JSON object inside text.
-                if raw_str.startswith("{"):
-                    return json.loads(raw_str)
-                else:
-                    # try to find first '{' ... matching '}' substring
-                    start = raw_str.find("{")
-                    end = raw_str.rfind("}")
-                    if start != -1 and end != -1 and end > start:
-                        return json.loads(raw_str[start:end+1])
-                    # last resort: parse entire string as JSON or raise
-                    return json.loads(raw_str)
-            except Exception:
-                logger.warning("Could not parse selection JSON from Ollama response, using fallback selector.")
-                return self._fallback_agent_selection(query)
-
-        except Exception as e:
-            logger.exception("Agent selection error")
-            return self._fallback_agent_selection(query)
-
-    def _fallback_agent_selection(self, query: str) -> Dict[str, Any]:
+            logger.error(f"Agent selection failed: {e}")
+        
+        # Fallback selection using heuristics
+        return self._heuristic_agent_selection(query, cognitive_analysis)
+    
+    def _heuristic_agent_selection(self, query: str, cognitive_analysis: Dict) -> Dict[str, Any]:
+        """Fallback heuristic-based agent selection"""
         selected = []
-        q = query.lower()
-        if any(w in q for w in ["anxious", "stress", "worry", "control", "overwhelm"]): selected.append("marcus")
-        if any(w in q for w in ["confused", "unclear", "don't understand", "what is", "why"]): selected.append("socrates")
-        if any(w in q for w in ["stuck", "forcing", "struggle", "balance", "flow"]): selected.append("laotzu")
-        if any(w in q for w in ["decision", "choice", "analyze", "plan", "systematic"]): selected.append("aristotle")
-        if not selected:
-            selected = ["socrates", "marcus"]
+        q_lower = query.lower()
+        
+        # Emotional state mapping
+        if cognitive_analysis.get("emotional_intensity", 0) > 0.6:
+            selected.append("marcus")
+        
+        # Confusion/clarity needs
+        if any(word in q_lower for word in ["confused", "unclear", "don't understand", "what is"]):
+            selected.append("socrates")
+        
+        # Flow/resistance issues
+        if any(word in q_lower for word in ["stuck", "forcing", "struggle", "balance"]):
+            selected.append("laotzu")
+        
+        # Analysis/decision needs
+        if any(word in q_lower for word in ["decision", "analyze", "plan", "habit"]):
+            selected.append("aristotle")
+        
+        # Ensure minimum 2 agents
+        if len(selected) < 2:
+            selected.extend(["socrates", "marcus"])
+        
         return {
             "selected_agents": selected[:3],
-            "reasoning": "Keyword-based fallback selection",
             "primary_agent": selected[0] if selected else "socrates",
-            "query_analysis": {"emotional_tone": "neutral", "problem_type": "general", "key_themes": ["inquiry"]}
+            "collaboration_pattern": "parallel",
+            "reasoning_depth": "moderate",
+            "selection_rationale": "Heuristic-based selection using keyword and emotional analysis",
+            "expected_synergies": ["Diverse philosophical perspectives"]
         }
+    
+    async def _call_ollama(self, messages: List[Dict], temperature: float = 0.7) -> str:
+        """Async Ollama API wrapper"""
+        def sync_call():
+            options = {"temperature": temperature, "num_predict": 1000}
+            resp = client.chat(model=OLLAMA_MODEL, messages=messages, options=options)
+            if isinstance(resp, dict):
+                return resp.get("message", {}).get("content", "")
+            return getattr(resp.message, "content", "")
+        
+        return await asyncio.to_thread(sync_call)
+    
+    async def _sequential_reasoning(self, agents: List, query: str, context: Dict) -> List[Dict]:
+        """Sequential reasoning where each agent builds on previous insights"""
+        reasoning_chain = []
+        accumulated_context = context.copy()
+        
+        for i, agent in enumerate(agents):
+            step_context = {
+                **accumulated_context,
+                "previous_insights": reasoning_chain,
+                "position_in_sequence": i + 1,
+                "total_agents": len(agents)
+            }
+            
+            reasoning_step = await agent.generate_reasoning_step(query, step_context)
+            reasoning_chain.append(reasoning_step)
+            
+            # Add this insight to context for next agent
+            accumulated_context[f"insight_from_{agent.philosopher_name}"] = reasoning_step.get("core_insight", "")
+        
+        return reasoning_chain
+    
+    async def _parallel_reasoning(self, agents: List, query: str, context: Dict) -> List[Dict]:
+        """Parallel reasoning where agents work independently"""
+        tasks = []
+        for agent in agents:
+            agent_context = {
+                **context,
+                "collaboration_mode": "independent",
+                "other_agents": [a.philosopher_name for a in agents if a != agent]
+            }
+            tasks.append(agent.generate_reasoning_step(query, agent_context))
+        
+        return await asyncio.gather(*tasks)
+    
+    async def _hierarchical_reasoning(self, agents: List, query: str, context: Dict) -> List[Dict]:
+        """Hierarchical reasoning with primary agent leading"""
+        primary_agent = agents[0]
+        secondary_agents = agents[1:]
+        
+        # Primary agent provides foundational reasoning
+        primary_reasoning = await primary_agent.generate_reasoning_step(query, {
+            **context,
+            "role": "primary_reasoner",
+            "responsibility": "provide_foundation"
+        })
+        
+        # Secondary agents elaborate and refine
+        secondary_tasks = []
+        for agent in secondary_agents:
+            agent_context = {
+                **context,
+                "primary_reasoning": primary_reasoning,
+                "role": "secondary_elaborator"
+            }
+            secondary_tasks.append(agent.generate_reasoning_step(query, agent_context))
+        
+        secondary_reasoning = await asyncio.gather(*secondary_tasks)
+        
+        return [primary_reasoning] + secondary_reasoning
+    
+    async def _dialectical_reasoning(self, agents: List, query: str, context: Dict) -> List[Dict]:
+        """Dialectical reasoning with agents challenging each other"""
+        if len(agents) < 2:
+            return await self._parallel_reasoning(agents, query, context)
+        
+        # First round: initial positions
+        initial_reasoning = await self._parallel_reasoning(agents, query, {
+            **context,
+            "dialectical_round": 1,
+            "instruction": "present_your_perspective"
+        })
+        
+        # Second round: cross-validation and synthesis
+        validation_tasks = []
+        for i, agent in enumerate(agents):
+            other_reasoning = [r for j, r in enumerate(initial_reasoning) if j != i]
+            validation_context = {
+                **context,
+                "dialectical_round": 2,
+                "peer_reasoning": other_reasoning,
+                "instruction": "validate_and_synthesize"
+            }
+            validation_tasks.append(agent.validate_peer_reasoning(other_reasoning[0] if other_reasoning else {}))
+        
+        validations = await asyncio.gather(*validation_tasks)
+        
+        # Combine initial reasoning with validations
+        dialectical_chain = []
+        for i, (reasoning, validation) in enumerate(zip(initial_reasoning, validations)):
+            dialectical_step = {
+                **reasoning,
+                "peer_validation": validation,
+                "dialectical_synthesis": validation.get("synthesis_suggestion", "")
+            }
+            dialectical_chain.append(dialectical_step)
+        
+        return dialectical_chain
 
-    # ---------- Synthesis ----------
-    async def generate_metacognitive_synthesis(self, query: str, agent_responses: Dict[str, str], selection_context: Dict) -> Dict[str, Any]:
-        synthesis_prompt = f"""You are a metacognitive synthesizer...
-ORIGINAL QUERY: {query}
+class ReasoningSynthesizer:
+    """Advanced synthesis engine for multi-agent reasoning"""
+    
+    def __init__(self):
+        self.metacognitive_reflector = MetacognitiveReflector()
+        self.dialectical_challenger = DialogicalChallenger()
+    
+    async def generate_comprehensive_synthesis(self, 
+                                            query: str, 
+                                            reasoning_chain: List[Dict],
+                                            agent_selection: Dict,
+                                            cognitive_analysis: Dict) -> Dict[str, Any]:
+        """Generate comprehensive synthesis with metacognitive enhancement"""
+        
+        synthesis_prompt = f"""
+You are a master synthesizer creating transformative wisdom from multiple philosophical perspectives.
 
-PHILOSOPHICAL RESPONSES:
-{json.dumps(agent_responses, indent=2)}
+ORIGINAL QUERY: "{query}"
 
-SELECTION CONTEXT: {json.dumps(selection_context, indent=2)}
+REASONING CHAIN:
+{json.dumps(reasoning_chain, indent=2)}
 
-Return JSON with keys: synthesis, key_insights, metacognitive_prompts, reasoning_chain, next_explorations
+AGENT SELECTION RATIONALE:
+{json.dumps(agent_selection, indent=2)}
+
+COGNITIVE ANALYSIS:
+{json.dumps(cognitive_analysis, indent=2)}
+
+Create a comprehensive synthesis as JSON:
+{{
+    "integrated_wisdom": "unified insight combining all perspectives",
+    "key_insights": ["most important discoveries"],
+    "practical_steps": ["specific actionable guidance"],
+    "metacognitive_enhancement": "how this process improves thinking skills",
+    "reasoning_quality_assessment": "evaluation of the reasoning process",
+    "cognitive_bridges": ["connections between different thinking modes"],
+    "transformative_elements": ["aspects that could change user's perspective"],
+    "application_scenarios": ["where this wisdom applies"],
+    "deepening_questions": ["questions for continued exploration"]
+}}
 """
+        
         try:
             messages = [{"role": "user", "content": synthesis_prompt}]
-
-            def sync_call():
-                return self._call_ollama_chat(messages, temperature=0.6, max_tokens=1000)
-
-            raw = await asyncio.to_thread(sync_call)
-
-            try:
-                if not raw:
-                    raise ValueError("Empty synthesis content")
-                raw_str = raw.strip()
-                if raw_str.startswith("{"):
-                    return json.loads(raw_str)
-                else:
-                    start = raw_str.find("{")
-                    end = raw_str.rfind("}")
-                    if start != -1 and end != -1 and end > start:
-                        return json.loads(raw_str[start:end+1])
-                    return json.loads(raw_str)
-            except Exception:
-                logger.warning("Could not parse synthesis JSON — using simple fallback.")
-                return self._create_simple_synthesis(agent_responses)
-        except Exception:
-            logger.exception("Synthesis Ollama call failed")
-            return self._create_simple_synthesis(agent_responses)
-
-    def _create_simple_synthesis(self, agent_responses: Dict[str, str]) -> Dict[str, Any]:
-        synthesis_parts = [f"{k.title()}: {v[:200]}..." for k, v in agent_responses.items()]
-        return {
-            "synthesis": "\n\n".join(synthesis_parts),
-            "key_insights": ["Multiple perspectives provide richer understanding"],
-            "metacognitive_prompts": ["Which perspective resonates most with you?", "How might you combine these approaches?"],
-            "reasoning_chain": [{"step": "Multi-perspective Analysis", "content": "Various philosophical traditions offer different lenses", "philosophers": list(agent_responses.keys())}],
-            "next_explorations": ["Explore one perspective deeper", "Apply insights to specific situation"]
-        }
-
-    # ---------- Core async processing ----------
-    async def process_query(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
-        selection_result = await self.analyze_and_select_agents(query, context)
-        selected_agents = selection_result.get("selected_agents", [])[:3]
-
-        async def _call_agent(agent, name, q, ctx):
-            try:
-                res = agent.generate_response(q, ctx)
-                if inspect.isawaitable(res):
-                    return await res
-                # synchronous method -> run in thread
-                return await asyncio.to_thread(agent.generate_response, q, ctx)
-            except Exception as e:
-                logger.exception(f"Agent {name} failed: {e}")
-                return f"{name}: Error generating response."
-
-        tasks = []
-        for name in selected_agents:
-            a = self.agents.get(name)
-            if not a:
-                continue
-            ctx = {**(context or {}), "selection_reasoning": selection_result.get("reasoning"), "other_agents": [x for x in selected_agents if x != name]}
-            tasks.append(_call_agent(a, name, query, ctx))
-
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        agent_responses: Dict[str, str] = {}
-        for name, resp in zip(selected_agents, responses):
-            if isinstance(resp, Exception):
-                logger.exception(f"Agent {name} exception: {resp}")
-                agent_responses[name] = f"{name}: Error generating response."
+            response = await self._call_ollama(messages, temperature=0.8, max_tokens=1500)
+            
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                base_synthesis = json.loads(response[json_start:json_end])
             else:
-                agent_responses[name] = str(resp)
-
-        synthesis_result = await self.generate_metacognitive_synthesis(query, agent_responses, selection_result)
-
-        return {
-            "query": query,
-            "agent_selection": selection_result,
-            "agent_responses": agent_responses,
-            "synthesis": synthesis_result,
-            "philosophers_consulted": selected_agents,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "reasoning_quality": "advanced_llm_powered"
+                base_synthesis = self._create_fallback_synthesis(reasoning_chain)
+        except Exception as e:
+            logger.error(f"Synthesis generation failed: {e}")
+            base_synthesis = self._create_fallback_synthesis(reasoning_chain)
+        
+        # Enhance with metacognitive prompts
+        metacognitive_prompts = await self.metacognitive_reflector.generate_metacognitive_prompts(reasoning_chain)
+        
+        # Add dialectical challenges
+        dialectical_challenges = await self.dialectical_challenger.generate_counter_perspectives(base_synthesis)
+        
+        # Combine all synthesis elements
+        enhanced_synthesis = {
+            **base_synthesis,
+            "metacognitive_prompts": metacognitive_prompts,
+            "dialectical_challenges": dialectical_challenges,
+            "synthesis_quality_score": self._calculate_synthesis_quality(base_synthesis, reasoning_chain),
+            "cognitive_enhancement_elements": self._identify_cognitive_enhancements(reasoning_chain)
         }
+        
+        return enhanced_synthesis
+    
+    def _create_fallback_synthesis(self, reasoning_chain: List[Dict]) -> Dict[str, Any]:
+        """Create basic synthesis when AI synthesis fails"""
+        philosophers = [step.get("philosopher", "Unknown") for step in reasoning_chain]
+        insights = [step.get("core_insight", "") for step in reasoning_chain]
+        
+        return {
+            "integrated_wisdom": "Multiple philosophical perspectives offer complementary wisdom for addressing your concern.",
+            "key_insights": insights[:3],
+            "practical_steps": ["Reflect on each perspective", "Choose the most resonant approach", "Take small action steps"],
+            "metacognitive_enhancement": "This multi-perspective analysis enhances your ability to see complex issues from different angles",
+            "reasoning_quality_assessment": "Good diversity of perspectives provided",
+            "cognitive_bridges": ["Connecting intuitive and analytical thinking"],
+            "transformative_elements": ["Exposure to different philosophical frameworks"],
+            "application_scenarios": ["Similar complex decisions", "Future philosophical inquiries"],
+            "deepening_questions": ["Which perspective resonates most?", "How might you combine these approaches?"]
+        }
+    
+    def _calculate_synthesis_quality(self, synthesis: Dict, reasoning_chain: List[Dict]) -> float:
+        """Calculate quality score for synthesis"""
+        score = 0.0
+        
+        # Check for key elements
+        if synthesis.get("integrated_wisdom"): score += 0.2
+        if synthesis.get("key_insights") and len(synthesis["key_insights"]) >= 2: score += 0.2
+        if synthesis.get("practical_steps"): score += 0.2
+        if synthesis.get("metacognitive_enhancement"): score += 0.2
+        if len(reasoning_chain) >= 2: score += 0.2  # Multi-perspective bonus
+        
+        return min(score, 1.0)
+    
+    def _identify_cognitive_enhancements(self, reasoning_chain: List[Dict]) -> List[str]:
+        """Identify cognitive enhancement elements in the reasoning"""
+        enhancements = []
+        
+        reasoning_types = [step.get("reasoning_type", "") for step in reasoning_chain]
+        if "analytical" in reasoning_types and "intuitive" in reasoning_types:
+            enhancements.append("System 1.5 integration: bridging intuitive and analytical thinking")
+        
+        if len(set(step.get("philosopher", "") for step in reasoning_chain)) >= 3:
+            enhancements.append("Multi-perspective analysis: developing cognitive flexibility")
+        
+        if any("socratic_catalyst" in step for step in reasoning_chain):
+            enhancements.append("Socratic questioning: improving inquiry skills")
+        
+        if any("metacognitive_awareness" in step for step in reasoning_chain):
+            enhancements.append("Metacognitive development: thinking about thinking")
+        
+        return enhancements
+    
+    async def _call_ollama(self, messages: List[Dict], temperature: float = 0.7, max_tokens: int = 1000) -> str:
+        """Async Ollama API wrapper"""
+        def sync_call():
+            options = {"temperature": temperature, "num_predict": max_tokens}
+            resp = client.chat(model=OLLAMA_MODEL, messages=messages, options=options)
+            if isinstance(resp, dict):
+                return resp.get("message", {}).get("content", "")
+            return getattr(resp.message, "content", "")
+        
+        return await asyncio.to_thread(sync_call)
 
-    # Async public method (preferred)
-    async def ask_wisdom(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
-        return await self.process_query(query, context)
-
-    # Safe synchronous wrapper for legacy callers (runs event loop if safe)
-    def ask_wisdom_sync(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+class AdvancedWisdomCoordinator:
+    """Revolutionary System 1.5 Metacognitive Reasoning Coordinator"""
+    
+    def __init__(self):
+        self.system15_controller = System15Controller()
+        self.orchestrator = AdvancedAgentOrchestrator()
+        self.synthesizer = ReasoningSynthesizer()
+        self.reasoning_cache = {}
+        
+    def _normalize_agent_name(self, a: Any) -> str:
+        known_agents = {'socrates', 'marcus', 'laotzu', 'aristotle', 'marcusaurelius', 'lao-tzu'}
+        if isinstance(a, str):
+            return a.lower().replace(' ', '').replace('-', '')
+        if isinstance(a, dict):
+            for key, value in a.items():
+                lkey = key.lower().replace(' ', '').replace('-', '')
+                if lkey in known_agents:
+                    return lkey
+                if isinstance(value, str):
+                    lval = value.lower().replace(' ', '').replace('-', '')
+                    if lval in known_agents:
+                        return lval
+            return list(a.keys())[0] if a.keys() else 'unknown'
+        return str(a)
+    
+    async def process_wisdom_request(self, query: str, context: Optional[Dict] = None) -> AsyncGenerator[Dict[str, Any], None]:
+        """Stream real-time reasoning steps to the user"""
         try:
-            # usually called from a thread (e.g., via asyncio.to_thread) so asyncio.run is safe
-            return asyncio.run(self.process_query(query, context))
-        except Exception:
-            logger.exception("ask_wisdom_sync failed; falling back to minimal sync")
-            # minimal sync fallback using keyword selection and simple synthesis
-            selection = self._fallback_agent_selection(query)
-            selected = selection.get("selected_agents", [])[:3]
-            agent_responses = {}
-            for name in selected:
-                agent = self.agents.get(name)
-                if not agent:
-                    continue
-                try:
-                    resp = agent.generate_response(query, context)
-                    if inspect.isawaitable(resp):
-                        # can't await here: mark placeholder
-                        agent_responses[name] = f"{name}: (async response unavailable in sync fallback)"
-                    else:
-                        agent_responses[name] = str(resp)
-                except Exception:
-                    agent_responses[name] = f"{name}: Error generating response."
-            synthesis = self._create_simple_synthesis(agent_responses)
-            return {
-                "query": query,
-                "agent_selection": selection,
-                "agent_responses": agent_responses,
-                "synthesis": synthesis,
-                "philosophers_consulted": selected
+            # Step 1: Cognitive Load Analysis
+            yield {
+                "step": "cognitive_analysis",
+                "status": "processing",
+                "message": "Analyzing cognitive complexity and emotional context...",
+                "timestamp": datetime.utcnow().isoformat()
             }
+            
+            cognitive_analysis = await self.system15_controller.analyze_cognitive_load(query)
+            
+            yield {
+                "step": "cognitive_analysis",
+                "status": "complete",
+                "data": cognitive_analysis,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            # Step 2: Agent Selection
+            yield {
+                "step": "agent_selection",
+                "status": "processing",
+                "message": "Selecting optimal philosophical agents for your inquiry...",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            agent_selection = await self.orchestrator.select_optimal_agents(query, cognitive_analysis)
+            
+            yield {
+                "step": "agent_selection", 
+                "status": "complete",
+                "data": agent_selection,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            # Normalize selected_agents to ensure they are strings
+            agent_selection["selected_agents"] = [self._normalize_agent_name(a) for a in agent_selection["selected_agents"]]
+            
+            # Step 3: Multi-Agent Reasoning
+            yield {
+                "step": "reasoning_initiation",
+                "status": "processing", 
+                "message": f"Consulting the council of wisdom: {', '.join(agent_selection['selected_agents'])}...",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            # Create agent instances
+            agents = []
+            for agent_name in agent_selection["selected_agents"]:
+                try:
+                    agent = PhilosophicalAgentFactory.create_agent(agent_name)
+                    agents.append(agent)
+                except Exception as e:
+                    logger.error(f"Failed to create agent {agent_name}: {e}")
+                    continue
+            
+            # Execute collaboration pattern
+            collaboration_pattern = agent_selection.get("collaboration_pattern", "parallel")
+            reasoning_context = {
+                **(context or {}),
+                "cognitive_analysis": cognitive_analysis,
+                "agent_selection": agent_selection
+            }
+            
+            if collaboration_pattern == "sequential":
+                reasoning_chain = await self.orchestrator._sequential_reasoning(agents, query, reasoning_context)
+            elif collaboration_pattern == "hierarchical":
+                reasoning_chain = await self.orchestrator._hierarchical_reasoning(agents, query, reasoning_context)
+            elif collaboration_pattern == "dialectical":
+                reasoning_chain = await self.orchestrator._dialectical_reasoning(agents, query, reasoning_context)
+            else:
+                reasoning_chain = await self.orchestrator._parallel_reasoning(agents, query, reasoning_context)
+            
+            # Stream individual reasoning steps
+            for i, reasoning_step in enumerate(reasoning_chain):
+                yield {
+                    "step": "reasoning_step",
+                    "status": "complete",
+                    "step_number": i + 1,
+                    "total_steps": len(reasoning_chain),
+                    "data": reasoning_step,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+                # Small delay for better UX streaming effect
+                await asyncio.sleep(0.1)
+            
+            # Step 4: Synthesis Generation
+            yield {
+                "step": "synthesis",
+                "status": "processing",
+                "message": "Synthesizing wisdom and generating metacognitive insights...",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            synthesis = await self.synthesizer.generate_comprehensive_synthesis(
+                query, reasoning_chain, agent_selection, cognitive_analysis
+            )
+            
+            yield {
+                "step": "synthesis",
+                "status": "complete", 
+                "data": synthesis,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            # Step 5: Final Integration
+            yield {
+                "step": "integration_complete",
+                "status": "complete",
+                "message": "Wisdom council has completed its deliberation",
+                "final_result": {
+                    "query": query,
+                    "cognitive_analysis": cognitive_analysis,
+                    "agent_selection": agent_selection,
+                    "reasoning_chain": reasoning_chain,
+                    "synthesis": synthesis,
+                    "philosophers_consulted": [agent.philosopher_name for agent in agents],
+                    "system_version": "AAIRS 2.0 - System 1.5 Framework",
+                    "processing_quality": "revolutionary_metacognitive_enhancement"
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.exception("Error in wisdom processing stream")
+            yield {
+                "step": "error",
+                "status": "error",
+                "message": f"Wisdom processing encountered an error: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    async def ask_wisdom(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+        """Complete wisdom processing (non-streaming version)"""
+        final_result = None
+        
+        async for step in self.process_wisdom_request(query, context):
+            if step.get("step") == "integration_complete":
+                final_result = step["final_result"]
+                break
+        
+        return final_result or {
+            "error": "Processing failed",
+            "query": query,
+            "timestamp": datetime.utcnow().isoformat()
+        }
